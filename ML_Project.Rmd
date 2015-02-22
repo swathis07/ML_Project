@@ -1,0 +1,142 @@
+---
+title       : Practical Machine Learning Project
+subtitle    : Data Science Specialization - Coursera
+author      : Swathi S.
+job         : 
+framework   : io2012        # {io2012, html5slides, shower, dzslides, ...}
+highlighter : highlight.js  # {highlight.js, prettify, highlight}
+hitheme     : tomorrow      # 
+widgets     : []            # {mathjax, quiz, bootstrap}
+mode        : selfcontained # {standalone, draft}
+knit        : slidify::knit2slides
+---
+
+## Project Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. The goal of this project is to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+The training data for this project are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here: 
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har
+
+--- .class #id
+
+## Loading and cleaning up the data
+
+- Data is loaded.
+- Columns filled with NA values are deleted as they are not going to be good predictors
+- The first 5 columns are also removed as they contain only descriptive information like name, timestamps.
+- Training data is further split into 
+
+```{r}
+options(warn=-1)
+suppressMessages(library(caret))
+Train <- read.csv("pml-training.csv")
+Train <- Train[colSums(is.na(Train))==0] #Columns with NA values deleted
+Train <- Train[,6:93]                    #Descriptive columns deleted
+inTrain <- createDataPartition(y=Train$classe,p=0.75,list=FALSE)
+training <- Train[inTrain,]
+testing <- Train[-inTrain,]
+
+```
+
+--- .class #id
+
+## Predictor Selection
+
+- Near zero covariates are removed
+
+```{r}
+nsv <- nearZeroVar(training, saveMetrics = T)
+head(nsv,7)
+training <- training[, !nsv$nzv]
+```
+
+--- .class #id
+
+## Training the model using Decision Tree
+The first method used to train the data is using Prediction Trees
+```{r}
+suppressMessages(library(rpart))
+suppressMessages(library(rpart.plot))
+tree <- rpart(classe~.,method="class",data=training)
+prp(tree)
+```
+
+--- .class #id
+
+## Evaluating Decision Tree 
+
+```{r}
+predTree <- predict(tree,newdata=testing,type="class")
+confusionMatrix(predTree,testing$classe)
+```
+
+--- .class #id
+
+## Training the model using Decision Tree with Cross Validation
+
+- Define cross-validation experiment
+- Perform the cross validation
+- Create a new CART model
+
+```{r}
+suppressMessages(library(e1071))
+set.seed(1)
+fitControl <- trainControl(method="cv",number=10)
+cartGrid <- expand.grid(.cp=(1:50)*.01)
+cv <- train(classe~.,data=training,method="rpart",trControl=fitControl,tuneGrid=cartGrid) #From this we find that best control parameter for highest accuracy is cp=0.01
+treeCV <- rpart(classe~.,data=training,method="class",control=rpart.control(cp=0.01))
+```
+
+--- .class #id
+
+## Evaluating Decision Tree with Cross Validation
+
+```{r}
+predTreeCV <- predict(treeCV,newdata=testing,type="class")
+confusionMatrix(predTreeCV,testing$classe)
+```
+
+--- .class #id
+
+## Training the model with Random Forests
+
+In random forests, there is no need for cross-validation or a separate test set to get an unbiased estimate of the test set error. It is estimated internally during the run. However, the error does decrease with the number of trees. 
+
+```{r}
+suppressMessages(library(randomForest))
+set.seed(1)
+forest <- randomForest(classe~.,data=training,ntree=200,nodesize=25)
+```
+
+--- .class #id
+
+## Evaluating Random Forests
+
+```{r}
+predForest <- predict(forest, newdata=testing)
+confusionMatrix(predForest,testing$classe)
+```
+
+--- .class #id
+
+## Conclusion
+
+Out of the three models that were tried, it is clear that Random Forest is the best model with an accuracy of 99.3%. With Decision Tree, both models - with and without cross validation gave an accuracy of above 70%. It is interesting to note that there was no noticable improvement in performance of the decision tree even after performing a 10 fold cross validation.
+
+Let's apply the Random Forest model to the test data set that was provided. From our model we can expect an out of sample error of 0.7% 
+
+```{r}
+finalTest <- read.csv("pml-testing.csv")
+Final_Prediction<-predict(forest,finalTest)
+Final_Prediction
+```
+
+The Random Forest model has correctly predicted all values as verified by online submission.
+
+--- .class #id
